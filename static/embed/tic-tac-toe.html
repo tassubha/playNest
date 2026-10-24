@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Tic Tac Toe</title>
+<style>
+  * { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body { background: radial-gradient(circle at 50% 0%, #2a1a6e, #0f0b2e 70%); color: #fff; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px; overflow: hidden; user-select: none; }
+  .row { display: flex; gap: 8px; align-items: center; font-size: 14px; font-weight: 600; }
+  .row button { border: 0; border-radius: 999px; padding: 6px 16px; font-weight: 700; color: #fff; background: #352b7a; cursor: pointer; }
+  .row button.on { background: linear-gradient(135deg, #7c3aed, #ec4899); }
+  .score { display: flex; gap: 18px; font-size: 14px; color: #c4b5fd; }
+  .score b { color: #fbbf24; }
+  #board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; width: min(54vh, 86vw, 330px); aspect-ratio: 1; }
+  .cell { border: 0; border-radius: 16px; background: #1a1445; font-size: min(11vh, 64px); font-weight: 800; cursor: pointer; color: #fff; transition: background .15s, transform .15s; }
+  .cell:hover:not(:disabled) { background: #2d2275; transform: scale(1.04); }
+  .cell.x { color: #f472b6; }
+  .cell.o { color: #22d3ee; }
+  .cell.win { background: #365314; }
+  #status { font-weight: 700; min-height: 22px; }
+  #again { border: 0; border-radius: 999px; padding: 8px 24px; font-weight: 800; color: #fff; cursor: pointer; background: linear-gradient(135deg, #7c3aed, #ec4899); }
+</style>
+</head>
+<body>
+<div class="row"><span>Level</span><button id="easy" type="button">Easy</button><button id="hard" type="button" class="on">Hard</button></div>
+<div class="score"><span>You <b id="sx">0</b></span><span>Draws <b id="sd">0</b></span><span>CPU <b id="so">0</b></span></div>
+<div id="board" role="grid" aria-label="Tic Tac Toe board"></div>
+<div id="status">Your turn (X)</div>
+<button id="again" type="button">New game</button>
+<script>
+(() => {
+  const LINES = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+  const boardEl = document.getElementById('board');
+  const statusEl = document.getElementById('status');
+  const score = { x: 0, d: 0, o: 0 };
+  let cells = Array(9).fill(null), hard = true, over = false, thinking = false;
+  const buttons = [];
+
+  for (let i = 0; i < 9; i++) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'cell';
+    b.setAttribute('aria-label', 'Square ' + (i + 1));
+    b.addEventListener('click', () => playerMove(i));
+    boardEl.appendChild(b); buttons.push(b);
+  }
+
+  function winnerOf(b) {
+    for (const l of LINES) {
+      if (b[l[0]] && b[l[0]] === b[l[1]] && b[l[0]] === b[l[2]]) return { who: b[l[0]], line: l };
+    }
+    return null;
+  }
+
+  function render() {
+    buttons.forEach((btn, i) => {
+      btn.textContent = cells[i] || '';
+      btn.className = 'cell' + (cells[i] ? ' ' + cells[i].toLowerCase() : '');
+      btn.disabled = !!cells[i] || over || thinking;
+    });
+  }
+
+  function endCheck() {
+    const w = winnerOf(cells);
+    if (w) {
+      over = true;
+      w.line.forEach(i => buttons[i].classList.add('win'));
+      if (w.who === 'X') { score.x++; statusEl.textContent = 'You win! 🎉'; }
+      else { score.o++; statusEl.textContent = 'CPU wins this one.'; }
+    } else if (cells.every(Boolean)) {
+      over = true; score.d++; statusEl.textContent = "It's a draw.";
+    }
+    document.getElementById('sx').textContent = score.x;
+    document.getElementById('sd').textContent = score.d;
+    document.getElementById('so').textContent = score.o;
+    return over;
+  }
+
+  function playerMove(i) {
+    if (over || thinking || cells[i]) return;
+    cells[i] = 'X';
+    render();
+    if (endCheck()) { render(); highlight(); return; }
+    thinking = true; statusEl.textContent = 'CPU is thinking...'; render();
+    setTimeout(() => {
+      const m = hard ? bestMove() : randomMove();
+      cells[m] = 'O';
+      thinking = false;
+      render();
+      if (endCheck()) { render(); highlight(); } else { statusEl.textContent = 'Your turn (X)'; }
+    }, 380);
+  }
+
+  function highlight() {
+    const w = winnerOf(cells);
+    if (w) w.line.forEach(i => buttons[i].classList.add('win'));
+  }
+
+  function randomMove() {
+    const free = cells.map((v, i) => v ? -1 : i).filter(i => i >= 0);
+    return free[Math.floor(Math.random() * free.length)];
+  }
+
+  function minimax(b, isCpu) {
+    const w = winnerOf(b);
+    if (w) return w.who === 'O' ? 10 : -10;
+    if (b.every(Boolean)) return 0;
+    let best = isCpu ? -Infinity : Infinity;
+    for (let i = 0; i < 9; i++) {
+      if (b[i]) continue;
+      b[i] = isCpu ? 'O' : 'X';
+      const s = minimax(b, !isCpu);
+      b[i] = null;
+      best = isCpu ? Math.max(best, s) : Math.min(best, s);
+    }
+    return best;
+  }
+
+  function bestMove() {
+    let bestScore = -Infinity, move = randomMove();
+    for (let i = 0; i < 9; i++) {
+      if (cells[i]) continue;
+      cells[i] = 'O';
+      const s = minimax(cells, false);
+      cells[i] = null;
+      if (s > bestScore) { bestScore = s; move = i; }
+    }
+    return move;
+  }
+
+  function reset() {
+    cells = Array(9).fill(null); over = false; thinking = false;
+    statusEl.textContent = 'Your turn (X)';
+    render();
+  }
+
+  function setLevel(isHard) {
+    hard = isHard;
+    document.getElementById('hard').className = isHard ? 'on' : '';
+    document.getElementById('easy').className = isHard ? '' : 'on';
+    reset();
+  }
+
+  document.getElementById('easy').addEventListener('click', () => setLevel(false));
+  document.getElementById('hard').addEventListener('click', () => setLevel(true));
+  document.getElementById('again').addEventListener('click', reset);
+  render();
+})();
+</script>
+</body>
+</html>
